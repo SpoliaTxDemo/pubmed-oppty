@@ -1,0 +1,16 @@
+{
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "startCommand": "gunicorn app:app"
+  },
+  "env": {
+    "FLASK_SECRET": { "required": true },
+    "DEMO_USERNAME": { "required": true },
+    "DEMO_PASSWORD_HASH": { "required": true },
+    "OPENAI_API_KEY": { "required": true },
+    "NCBI_EMAIL": { "required": true },
+    "NCBI_API_KEY": { "required": false }
+  }
+}

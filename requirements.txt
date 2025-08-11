@@ -1,0 +1,6 @@
+Flask==3.0.3
+Flask-Login==0.6.3
+python-dotenv==1.0.1
+openai>=1.30.0
+biopython==1.83
+gunicorn==22.0.0
