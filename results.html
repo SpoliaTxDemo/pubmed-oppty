@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h3>Query</h3>
+  <p>{{ query }}</p>
+  <p><strong>{{ count }}</strong> records found.</p>
+  {% if export_ready %}
+  <p>
+    <a class="button" href="{{ url_for('download') }}">Download .txt</a>
+  </p>
+  {% endif %}
+</div>
+
+{% for rec in records %}
+<div class="card">
+  <div><strong>{{ loop.index }}. {{ rec.title }}</strong></div>
+  <div class="muted">
+    {{ rec.journal }} | {{ rec.pubdate }} | PMID {{ rec.pmid }}{% if rec.doi %} | DOI {{ rec.doi }}{% endif %}
+  </div>
+  {% if rec.authors %}
+  <div>Authors: {{ rec.authors | join('; ') }}</div>
+  {% endif %}
+  <div style="margin-top: 0.5rem;">
+    <em>Abstract</em><br />
+    {{ rec.abstract if rec.abstract else '(no abstract)' }}
+  </div>
+</div>
+{% endfor %}
+
+<form method="post" action="{{ url_for('analyze') }}" class="card">
+  <h3>Analyze Opportunity</h3>
+  <div style="margin-bottom: 0.5rem;">
+    <label>ChatGPT model:
+      <select name="model">
+        {% for m in models %}
+        <option value="{{ m }}" {% if m == default_model %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="muted" style="margin-top: 0.25rem;">
+      gpt-4o-mini = cheaper/faster, gpt-4o = higher quality
+    </div>
+  </div>
+  <button type="submit">Analyze Opportunity</button>
+</form>
+{% endblock %}

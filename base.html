@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>PubMed Opportunity Finder</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+        margin: 2rem;
+      }
+      .card {
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+      }
+      .row {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+      label {
+        display: inline-block;
+        margin-right: 1rem;
+      }
+      button {
+        padding: 0.6rem 1rem;
+        border-radius: 10px;
+        border: 1px solid #111827;
+        background: #111827;
+        color: white;
+        cursor: pointer;
+      }
+      a.button {
+        text-decoration: none;
+      }
+      .muted {
+        color: #6b7280;
+      }
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
+      input[type="text"],
+      select {
+        padding: 0.4rem 0.5rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <div><strong>PubMed Opportunity Finder</strong></div>
+      <div>
+        {% if current_user.is_authenticated %}
+        <a href="{{ url_for('logout') }}">Logout</a>
+        {% endif %}
+      </div>
+    </div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div>
+          {% for category, message in messages %}
+            <div class="card">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </body>
+</html>

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Build your PubMed search</h2>
+  <form method="post">
+    <h3>Author affiliation (pharma)</h3>
+    <div class="row">
+      {% for p in pharma_options %}
+      <label>
+        <input type="checkbox" name="affiliations" value="{{ p }}" checked /> {{ p }}
+      </label>
+      {% endfor %}
+    </div>
+    <h3>Disease area: Rare metabolic</h3>
+    <div class="row">
+      {% for term in disease_options %}
+      <label>
+        <input type="checkbox" name="dterms" value="{{ term }}" checked /> {{ term }}
+      </label>
+      {% endfor %}
+    </div>
+    <div>
+      <label>Optional extra terms:
+        <input type="text" name="custom_terms" placeholder="e.g., 'glycogen storage disease'" />
+      </label>
+    </div>
+    <p class="muted">We’ll fetch up to 100 abstracts since 2005, newest first.</p>
+    <button type="submit">Search PubMed</button>
+  </form>
+</div>
+{% endblock %}

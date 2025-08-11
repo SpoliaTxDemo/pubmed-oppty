@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h3>Analysis</h3>
+  {% if query %}<p class="muted">For query: {{ query }}</p>{% endif %}
+  {% if model %}<p class="muted">Model: {{ model }}</p>{% endif %}
+  <pre style="white-space: pre-wrap;">{{ analysis }}</pre>
+</div>
+{% endblock %}
