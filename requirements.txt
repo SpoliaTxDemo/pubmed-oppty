@@ -6,3 +6,4 @@ biopython==1.83
 gunicorn==22.0.0
 httpx>=0.27.0
 certifi>=2024.2.2
+requests>=2.31.0
