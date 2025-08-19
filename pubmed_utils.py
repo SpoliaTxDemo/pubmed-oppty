@@ -1,195 +1,84 @@
-"""Utility functions for searching PubMed via Entrez and processing results.
+# pubmed_utils.py
+# Utilities for building PubMed queries, fetching records, and formatting output.
+# Dependencies: biopython (Entrez/Medline)
+# pip install biopython
+# Be sure to configure Entrez.email (and optionally Entrez.api_key) in your app init.
 
-This module provides helper functions to build search queries, perform
-ESearch and EFetch calls to the NCBI Entrez API, and format the results
-into plain text suitable for export or further analysis. The default
-disease terms include several categories of rare metabolic disorders.
-"""
 
 from __future__ import annotations
 
-import os
-import datetime
-from typing import List, Dict
+
+from typing import Iterable, List, Dict, Any, Tuple
+from dataclasses import dataclass
+import re
 from Bio import Entrez, Medline
 
-import re
 
-# Map pharma synonyms/variants to canonical short names
-PHARMA_SYNONYMS = {
-    "pfizer": "Pfizer",
-    "pfizer inc": "Pfizer",
-    "novartis": "Novartis",
-    "roche": "Roche",
-    "genentech": "Roche",
-    "merck": "Merck",
-    "msd": "Merck",
-    "glaxosmithkline": "GSK",
-    "gsk": "GSK",
-    "sanofi": "Sanofi",
-    "astrazeneca": "AstraZeneca",
-    "johnson  johnson": "J&J",
-    "johnson & johnson": "J&J",
-    "janssen": "J&J",
-    "bayer": "Bayer",
-    "abbvie": "AbbVie",
-    "abbott": "Abbott",
-    "takeda": "Takeda",
-    "boehringer ingelheim": "Boehringer Ingelheim",
-    "eli lilly": "Lilly",
-    "lilly": "Lilly",
-    "bristol myers squibb": "BMS",
-    "bms": "BMS",
-    "amgen": "Amgen",
-    "gilead": "Gilead",
-    "novo nordisk": "Novo Nordisk",
-    "biogen": "Biogen",
-}
-
-def normalize_affiliation(affil: str):
-    """
-    Return canonical short pharma name if affiliation matches a synonym, else None.
-    """
-    if not affil:
-        return None
-    clean = re.sub(r"[^\w\s]", " ", affil.lower())
-    clean = re.sub(r"\s+", " ", clean).strip()
-    for key, short in PHARMA_SYNONYMS.items():
-        if key in clean:
-            return short
-    return None
-
-
-__all__ = [
-    "RARE_METABOLIC_DEFAULT_TERMS",
-    "build_query",
-    "esearch_pmids",
-    "efetch_medline",
-    "to_txt",
+# ---------------------------------------------
+# Public constants (importable by the Flask UI)
+# ---------------------------------------------
+TOP_20_PHARMA: List[str] = [
+"Pfizer",
+"Novartis",
+"Roche",
+"Merck",
+"GSK",
+"Sanofi",
+"AstraZeneca",
+"Johnson & Johnson",
+"AbbVie",
+"Amgen",
+"Bristol Myers Squibb",
+"Eli Lilly",
+"Takeda",
+"Bayer",
+"Boehringer Ingelheim",
+"Novo Nordisk",
+"Gilead",
+"Moderna",
+"Regeneron",
+"Vertex",
 ]
 
 
+# A small default set; extend as you wish.
 RARE_METABOLIC_DEFAULT_TERMS: List[str] = [
-    "inborn errors of metabolism",
-    "lysosomal storage disease",
-    "mitochondrial disorder",
-    "peroxisomal disorder",
-    "rare metabolic disorder",
+"Niemann-Pick type C",
+"Gaucher disease",
+"Fabry disease",
+"Pompe disease",
+"MPS I",
 ]
 
 
-def _entrez_init() -> None:
-    Entrez.email = os.getenv("NCBI_EMAIL", "you@example.com")
-    api_key = os.getenv("NCBI_API_KEY")
-    if api_key:
-        Entrez.api_key = api_key
+# ---------------------------------------------
+# Stricter pharma affiliation detection
+# ---------------------------------------------
+COMPANY_INDICATORS = re.compile(
+r"\b(inc|inc\.|incorporated|ltd|limited|llc|ag|gmbh|s\.?a\.?|sas|plc|company|"
+r"pharma\w*|pharmaceutical\w*|diagnostics|biotech|research|holding|group)\b",
+re.I,
+)
 
 
-def build_query(affiliations: List[str], disease_terms: List[str], custom_terms: str = "") -> str:
-    aff_q_parts: List[str] = []
-    for a in affiliations:
-        a = a.strip()
-        if a:
-            aff_q_parts.append(f'"{a}"[ad]')
-
-    terms: List[str] = [t.strip() for t in disease_terms if t.strip()]
-    if custom_terms.strip():
-        terms.append(custom_terms.strip())
-
-    query_parts: List[str] = []
-    if aff_q_parts:
-        query_parts.append("(" + " OR ".join(aff_q_parts) + ")")
-    if terms:
-        quoted_terms = [f'"{t}"' for t in terms]
-        query_parts.append("(" + " OR ".join(quoted_terms) + ")")
-
-    return " AND ".join(query_parts)
-
-
-def esearch_pmids(query: str, retmax: int = 100, min_year: int = 2005) -> List[str]:
-    if not query:
-        return []
-    _entrez_init()
-    today = datetime.date.today().strftime("%Y/%m/%d")
-    handle = Entrez.esearch(
-        db="pubmed",
-        term=query,
-        retmax=retmax,
-        datetype="pdat",
-        mindate=f"{min_year}/01/01",
-        maxdate=today,
-    )
-    record = Entrez.read(handle)
-    return record.get("IdList", [])
-
-
-def efetch_medline(pmids: List[str]) -> List[Dict]:
-    if not pmids:
-        return []
-    _entrez_init()
-    handle = Entrez.efetch(
-        db="pubmed",
-        id=",".join(pmids),
-        rettype="medline",
-        retmode="text",
-    )
-    records = list(Medline.parse(handle))
-    result: List[Dict] = []
-    for rec in records:
-        authors = rec.get("AU", [])
-        affiliations = rec.get("AD", [])
-        if isinstance(affiliations, str):
-            affiliations = [affiliations]
-
-        author_info = []
-        for i, name in enumerate(authors):
-            affil = affiliations[i] if i < len(affiliations) else ""
-            author_info.append((name, affil))
-
-        result.append(
-            {
-                "pmid": rec.get("PMID", ""),
-                "title": rec.get("TI", ""),
-                "journal": rec.get("JT", ""),
-                "pubdate": rec.get("DP", ""),
-                "authors": author_info,
-                "abstract": rec.get("AB", ""),
-                "doi": next(
-                    (
-                        aid.split()[0]
-                        for aid in rec.get("AID", [])
-                        if "doi" in aid.lower()
-                    ),
-                    "",
-                ),
-            }
-        )
-    return result
-
-
-def to_txt(records: List[Dict]) -> str:
-    LARGE_PHARMA = ["Novartis", "Roche"]
-    lines: List[str] = []
-
-    for idx, rec in enumerate(records, 1):
-        lines.append(f"## {idx}. {rec['title']}")
-        lines.append(
-            f"Journal: {rec['journal']} | PubDate: {rec['pubdate']} | PMID: {rec['pmid']} | DOI: {rec['doi']}"
-        )
-
-        author_strs = []
-        for name, affil in rec["authors"]:
-            match = normalize_affiliation(affil)
-            if match:
-                formatted = f"**{name}** ({match})"  # show only the matched (short) pharma name
-            else:
-                formatted = name
-            author_strs.append(formatted)
-
-        if author_strs:
-            lines.append("Authors: " + "; ".join(author_strs))
-        lines.append("Abstract:")
-        lines.append(rec["abstract"] or "(no abstract)")
-        lines.append("")
-
-    return "\n".join(lines)
+PHARMA_REGEX: List[Tuple[re.Pattern[str], str]] = [
+# Canonical matches
+(re.compile(r"\bpfizer\b|\bpfizer\s+inc\b", re.I), "Pfizer"),
+(re.compile(r"\bnovartis\b", re.I), "Novartis"),
+(re.compile(r"\bmerck\b|\bmsd\b|merck\s+sharp\s*&\s*doh\w*|merck\s*kga?a?\b", re.I), "Merck"),
+(re.compile(r"glaxo\w*smith\w*|\bgsk\b", re.I), "GSK"),
+(re.compile(r"\bsanofi\b", re.I), "Sanofi"),
+(re.compile(r"astra\s*zeneca", re.I), "AstraZeneca"),
+(re.compile(r"johnson\s*&\s*johnson|\bj&j\b|\bjanssen\b", re.I), "J&J"),
+# Roche: require company context; avoid French place names
+(re.compile(r"f\.?\s*hoffmann[-\s]*la[-\s]*roche", re.I), "Roche"),
+(re.compile(r"roche\s+diagnostics", re.I), "Roche"),
+(re.compile(r"roche\s+(pharma\w*|holding|group)\b", re.I), "Roche"),
+(re.compile(r"roche\s+(ag|gmbh|s\.?a\.?|sas|plc|ltd\.?|inc\.)\b", re.I), "Roche"),
+(re.compile(r"\bgenentech\b", re.I), "Roche"),
+# Common large caps (expand as needed)
+(re.compile(r"\babbvie\b", re.I), "AbbVie"),
+(re.compile(r"\bamgen\b", re.I), "Amgen"),
+(re.compile(r"bristol\s+myers\s+squibb|\bbms\b", re.I), "Bristol Myers Squibb"),
+(re.compile(r"eli\s+lilly|\blilly\b", re.I), "Eli Lilly"),
+return "\n".join(lines).strip() + "\n"
