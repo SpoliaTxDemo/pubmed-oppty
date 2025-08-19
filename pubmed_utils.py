@@ -13,6 +13,53 @@ import datetime
 from typing import List, Dict
 from Bio import Entrez, Medline
 
+import re
+
+# Map pharma synonyms/variants to canonical short names
+PHARMA_SYNONYMS = {
+    "pfizer": "Pfizer",
+    "pfizer inc": "Pfizer",
+    "novartis": "Novartis",
+    "roche": "Roche",
+    "genentech": "Roche",
+    "merck": "Merck",
+    "msd": "Merck",
+    "glaxosmithkline": "GSK",
+    "gsk": "GSK",
+    "sanofi": "Sanofi",
+    "astrazeneca": "AstraZeneca",
+    "johnson  johnson": "J&J",
+    "johnson & johnson": "J&J",
+    "janssen": "J&J",
+    "bayer": "Bayer",
+    "abbvie": "AbbVie",
+    "abbott": "Abbott",
+    "takeda": "Takeda",
+    "boehringer ingelheim": "Boehringer Ingelheim",
+    "eli lilly": "Lilly",
+    "lilly": "Lilly",
+    "bristol myers squibb": "BMS",
+    "bms": "BMS",
+    "amgen": "Amgen",
+    "gilead": "Gilead",
+    "novo nordisk": "Novo Nordisk",
+    "biogen": "Biogen",
+}
+
+def normalize_affiliation(affil: str):
+    """
+    Return canonical short pharma name if affiliation matches a synonym, else None.
+    """
+    if not affil:
+        return None
+    clean = re.sub(r"[^\w\s]", " ", affil.lower())
+    clean = re.sub(r"\s+", " ", clean).strip()
+    for key, short in PHARMA_SYNONYMS.items():
+        if key in clean:
+            return short
+    return None
+
+
 __all__ = [
     "RARE_METABOLIC_DEFAULT_TERMS",
     "build_query",
@@ -132,9 +179,9 @@ def to_txt(records: List[Dict]) -> str:
 
         author_strs = []
         for name, affil in rec["authors"]:
-            match = next((pharma for pharma in LARGE_PHARMA if pharma.lower() in affil.lower()), None)
+            match = normalize_affiliation(affil)
             if match:
-                formatted = f"**{name}** ({affil})"
+                formatted = f"**{name}** ({match})"  # show only the matched (short) pharma name
             else:
                 formatted = name
             author_strs.append(formatted)
