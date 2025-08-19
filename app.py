@@ -41,8 +41,9 @@ DEFAULT_MODEL = ALLOWED_MODELS[0]
 
 
 class DemoUser(UserMixin):
-"""A simple user class for single-user authentication."""
-id = "demo"
+    """A simple user class for single-user authentication."""
+    id = "demo"
+    pass
 
 
 @login_manager.user_loader
