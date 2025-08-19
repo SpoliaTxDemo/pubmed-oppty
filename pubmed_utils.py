@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 from typing import Iterable, List, Dict, Any, Tuple, Pattern
-from dataclasses import dataclass  # (import ok even if unused)
 import re
 from Bio import Entrez, Medline
 
@@ -14,39 +13,18 @@ from Bio import Entrez, Medline
 # Public constants (importable by the Flask UI)
 # ---------------------------------------------
 TOP_20_PHARMA: List[str] = [
-    "Pfizer",
-    "Novartis",
-    "Roche",
-    "Merck",
-    "GSK",
-    "Sanofi",
-    "AstraZeneca",
-    "Johnson & Johnson",
-    "AbbVie",
-    "Amgen",
-    "Bristol Myers Squibb",
-    "Eli Lilly",
-    "Takeda",
-    "Bayer",
-    "Boehringer Ingelheim",
-    "Novo Nordisk",
-    "Gilead",
-    "Moderna",
-    "Regeneron",
-    "Vertex",
+    "Pfizer", "Novartis", "Roche", "Merck", "GSK", "Sanofi", "AstraZeneca", "Johnson & Johnson",
+    "AbbVie", "Amgen", "Bristol Myers Squibb", "Eli Lilly", "Takeda", "Bayer",
+    "Boehringer Ingelheim", "Novo Nordisk", "Gilead", "Moderna", "Regeneron", "Vertex",
 ]
 
 # A small default set; extend as you wish.
 RARE_METABOLIC_DEFAULT_TERMS: List[str] = [
-    "Niemann-Pick type C",
-    "Gaucher disease",
-    "Fabry disease",
-    "Pompe disease",
-    "MPS I",
+    "Niemann-Pick type C", "Gaucher disease", "Fabry disease", "Pompe disease", "MPS I",
 ]
 
 # ---------------------------------------------
-# Stricter pharma affiliation detection
+# Stricter pharma affiliation detection (for exports)
 # ---------------------------------------------
 COMPANY_INDICATORS = re.compile(
     r"\b(inc|inc\.|incorporated|ltd|limited|llc|ag|gmbh|s\.?a\.?|sas|plc|company|"
@@ -55,7 +33,6 @@ COMPANY_INDICATORS = re.compile(
 )
 
 PHARMA_REGEX: List[Tuple[Pattern[str], str]] = [
-    # Canonical matches
     (re.compile(r"\bpfizer\b|\bpfizer\s+inc\b", re.I), "Pfizer"),
     (re.compile(r"\bnovartis\b", re.I), "Novartis"),
     (re.compile(r"\bmerck\b|\bmsd\b|merck\s+sharp\s*&\s*doh\w*|\bmerck\s+kga?a?\b", re.I), "Merck"),
@@ -63,15 +40,13 @@ PHARMA_REGEX: List[Tuple[Pattern[str], str]] = [
     (re.compile(r"\bsanofi\b", re.I), "Sanofi"),
     (re.compile(r"astra\s*zeneca", re.I), "AstraZeneca"),
     (re.compile(r"johnson\s*&\s*johnson|\bj&j\b|\bjanssen\b", re.I), "J&J"),
-
-    # Roche: require company context; avoid French place names (handled separately)
+    # Roche: require company context; avoid place names
     (re.compile(r"f\.?\s*hoffmann[-\s]*la[-\s]*roche", re.I), "Roche"),
     (re.compile(r"\broche\s+diagnostics\b", re.I), "Roche"),
     (re.compile(r"\broche\s+(pharma\w*|holding|group)\b", re.I), "Roche"),
     (re.compile(r"\broche\s+(ag|gmbh|s\.?a\.?|sas|plc|ltd\.?|inc\.)\b", re.I), "Roche"),
     (re.compile(r"\bgenentech\b", re.I), "Roche"),
-
-    # Other large companies
+    # Others
     (re.compile(r"\babbvie\b", re.I), "AbbVie"),
     (re.compile(r"\bamgen\b", re.I), "Amgen"),
     (re.compile(r"bristol\s+myers\s+squibb|\bbms\b", re.I), "Bristol Myers Squibb"),
@@ -87,18 +62,13 @@ PHARMA_REGEX: List[Tuple[Pattern[str], str]] = [
 ]
 
 def normalize_affiliation(affil: str | None) -> str | None:
-    """
-    Return canonical short pharma name if affiliation looks like a company; else None.
-    Avoids false positives like French toponyms (e.g., "La Roche-Guyon Hospital").
-    """
+    """Return canonical short pharma name if affiliation looks like a company; else None.
+    Avoids false positives like 'La Roche-Guyon Hospital' (no company indicators)."""
     if not affil:
         return None
     clean = affil.strip()
-
-    # If it's a La Roche toponym and *no* company indicator, do not match
     if re.search(r"\bla\s+roche\b", clean, flags=re.I) and not COMPANY_INDICATORS.search(clean):
         return None
-
     for rx, short in PHARMA_REGEX:
         if rx.search(clean):
             return short
@@ -108,34 +78,28 @@ def normalize_affiliation(affil: str | None) -> str | None:
 # Query building
 # ---------------------------------------------
 def build_query(affiliations: List[str], disease_terms: List[str], custom_terms: str = "") -> str:
-    """
-    Build a PubMed query.
-    - affiliations: list of company names → searched in Affiliation field [AD]
-    - disease_terms: list of disease terms → searched in Title/Abstract
-    - custom_terms: comma-separated extra Title/Abstract terms
+    """Build a PubMed query:
+      - affiliations: company names searched in Affiliation field [AD]
+      - disease_terms: in Title/Abstract
+      - custom_terms: comma-separated extra Title/Abstract terms
     """
     parts: List[str] = []
-
     aff_parts = [f'"{a}"[AD]' for a in affiliations if a and a.strip()]
     if aff_parts:
         parts.append("(" + " OR ".join(aff_parts) + ")")
-
     dt_parts = [f'({t})[Title/Abstract]' for t in disease_terms if t and t.strip()]
     if dt_parts:
         parts.append("(" + " OR ".join(dt_parts) + ")")
-
     if custom_terms:
         extras = [s.strip() for s in custom_terms.split(",") if s.strip()]
         if extras:
             parts.append("(" + " OR ".join(f'({e})[Title/Abstract]' for e in extras) + ")")
-
     if not parts:
         parts.append("all[filter]")
-
     return " AND ".join(parts)
 
 # ---------------------------------------------
-# Entrez helpers
+# Entrez helpers — BACKWARD-COMPATIBLE SHAPE
 # ---------------------------------------------
 def esearch_pmids(query: str, retmax: int = 100, min_year: int | None = None) -> List[str]:
     """Run Entrez.esearch and return a list of PMIDs (strings)."""
@@ -148,9 +112,10 @@ def esearch_pmids(query: str, retmax: int = 100, min_year: int | None = None) ->
     return list(data.get("IdList", []))
 
 def efetch_medline(pmids: Iterable[str]) -> List[Dict[str, Any]]:
-    """
-    Fetch MEDLINE records and return a simplified list of dicts with normalized authors.
-    We attempt to construct per-author (name, affiliation) tuples when possible.
+    """Fetch MEDLINE records and return a list of dicts with fields your templates expect:
+       title, journal, date, pmid, doi, authors (list[str]), affiliations (list[str]),
+       abstract (str), plus raw (full Medline dict).
+       Also provide aliases AU (authors), AD (affiliations), AB (abstract) for compatibility.
     """
     ids = ",".join(pmids)
     if not ids:
@@ -161,46 +126,49 @@ def efetch_medline(pmids: Iterable[str]) -> List[Dict[str, Any]]:
 
     out: List[Dict[str, Any]] = []
     for rec in records:
-        # Title / Journal / Date / PMID / DOI
-        title = rec.get("TI") or rec.get("JT") or ""
+        title = rec.get("TI") or ""
         journal = rec.get("JT") or rec.get("TA") or ""
         date = rec.get("DP") or ""
         pmid = rec.get("PMID") or ""
+
+        # DOI
         doi = None
         for aid in rec.get("AID", []) or []:
-            if aid and "[doi]" in aid.lower():
+            if isinstance(aid, str) and "[doi]" in aid.lower():
                 doi = aid.split(" ")[0]
                 break
 
-        # Authors & affiliations
-        au = rec.get("AU", []) or []  # list of names
-        fa = rec.get("FAU", []) or []  # full author names
-        ad = rec.get("AD", []) or []   # affiliations (can be many, not reliably aligned)
-
-        authors: List[Tuple[str, str | None]] = []
-        names = fa or au
-        ad_list = [ad] if isinstance(ad, str) else list(ad)
-
-        if names and ad_list and len(names) == len(ad_list):
-            authors = [(n, a) for n, a in zip(names, ad_list)]
+        # Authors & affiliations (keep as simple lists, no per-author tuples)
+        authors: List[str] = list(rec.get("FAU") or rec.get("AU") or [])
+        affiliations_raw = rec.get("AD", [])
+        if isinstance(affiliations_raw, str):
+            affiliations = [affiliations_raw]
         else:
-            authors = [(n, None) for n in names]
+            affiliations = list(affiliations_raw or [])
 
-        out.append(
-            {
-                "title": title,
-                "journal": journal,
-                "date": date,
-                "pmid": pmid,
-                "doi": doi,
-                "authors": authors,
-                "raw": rec,
-            }
-        )
+        # Abstract: Medline gives a single string under "AB"
+        abstract = rec.get("AB") or ""
+
+        item: Dict[str, Any] = {
+            "title": title,
+            "journal": journal,
+            "date": date,
+            "pmid": pmid,
+            "doi": doi,
+            "authors": authors,          # <- list[str], template-friendly
+            "affiliations": affiliations, # <- list[str]
+            "abstract": abstract,        # <- string
+            "raw": rec,                  # full record for any advanced use
+            # Aliases for backward compatibility if templates reference Medline keys:
+            "AU": authors,
+            "AD": affiliations,
+            "AB": abstract,
+        }
+        out.append(item)
     return out
 
 # ---------------------------------------------
-# Formatting helpers
+# Formatting for export (text file)
 # ---------------------------------------------
 def _format_single_author(name: str, affil: str | None) -> str:
     name = (name or "").strip()
@@ -210,42 +178,42 @@ def _format_single_author(name: str, affil: str | None) -> str:
     return name
 
 def to_txt(records: List[Dict[str, Any]]) -> str:
-    """
-    Convert fetched records into a readable text blob suitable for export/download.
-    Authors with large-pharma affiliations are **bolded** and followed by (Company).
-    Others are printed name-only (no affiliation).
+    """Convert fetched records into a readable text blob for download.
+    - Authors with large-pharma affiliations are **bolded** with (Company).
+    - Others: name only. If we can’t align authors↔affiliations, we print names only (safe).
     """
     lines: List[str] = []
     for r in records:
-        title = r.get("title", "").strip()
-        journal = r.get("journal", "").strip()
-        date = r.get("date", "").strip()
-        pmid = r.get("pmid", "").strip()
-        doi = r.get("doi")
+        title = (r.get("title") or "").strip()
+        journal = (r.get("journal") or "").strip()
+        date = (r.get("date") or "").strip()
+        pmid = (r.get("pmid") or "").strip()
+        doi = r.get("doi") or None
+        authors: List[str] = r.get("authors") or []
+        affiliations: List[str] = r.get("affiliations") or []
 
-        lines.append(f"{title}")
-        head_parts = [journal, date, f"PMID {pmid}"]
-        if doi:
-            head_parts.append(f"DOI {doi}")
-        head = " | ".join([p for p in head_parts if p])
+        lines.append(title)
+        head = " | ".join([p for p in [journal, date, f"PMID {pmid}", f"DOI {doi}" if doi else None] if p])
         if head:
             lines.append(head)
 
+        # Try to align authors with affiliations if counts match; else fall back to name-only
         author_strs: List[str] = []
-        for item in r.get("authors", []) or []:
-            if isinstance(item, (list, tuple)) and len(item) >= 1:
-                nm = str(item[0])
-                af = str(item[1]) if len(item) > 1 and item[1] is not None else None
+        if authors and affiliations and len(authors) == len(affiliations):
+            for nm, af in zip(authors, affiliations):
                 author_strs.append(_format_single_author(nm, af))
-            else:
-                nm = str(item)
+        else:
+            # No reliable alignment → do not guess; show names only
+            for nm in authors:
                 author_strs.append(_format_single_author(nm, None))
         if author_strs:
             lines.append("Authors: " + "; ".join(author_strs))
 
-        ab = r.get("raw", {}).get("AB") if isinstance(r.get("raw"), dict) else None
-        if ab:
+        abstract = (r.get("abstract") or "").strip()
+        if abstract:
             lines.append("Abstract")
-            lines.append(ab.strip())
-        lines.append("")
+            lines.append(abstract)
+
+        lines.append("")  # spacer between records
+
     return "\n".join(lines).strip() + "\n"
