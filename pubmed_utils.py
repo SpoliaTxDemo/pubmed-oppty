@@ -21,7 +21,7 @@ __all__ = [
     "to_txt",
 ]
 
-# Predefined list of terms for rare metabolic diseases
+
 RARE_METABOLIC_DEFAULT_TERMS: List[str] = [
     "inborn errors of metabolism",
     "lysosomal storage disease",
@@ -30,14 +30,13 @@ RARE_METABOLIC_DEFAULT_TERMS: List[str] = [
     "rare metabolic disorder",
 ]
 
-# Pharma keywords to bold authors and show their affiliation
-PHARMA_KEYWORDS = ["Novartis", "Roche"]
 
 def _entrez_init() -> None:
     Entrez.email = os.getenv("NCBI_EMAIL", "you@example.com")
     api_key = os.getenv("NCBI_API_KEY")
     if api_key:
         Entrez.api_key = api_key
+
 
 def build_query(affiliations: List[str], disease_terms: List[str], custom_terms: str = "") -> str:
     aff_q_parts: List[str] = []
@@ -59,6 +58,7 @@ def build_query(affiliations: List[str], disease_terms: List[str], custom_terms:
 
     return " AND ".join(query_parts)
 
+
 def esearch_pmids(query: str, retmax: int = 100, min_year: int = 2005) -> List[str]:
     if not query:
         return []
@@ -75,6 +75,7 @@ def esearch_pmids(query: str, retmax: int = 100, min_year: int = 2005) -> List[s
     record = Entrez.read(handle)
     return record.get("IdList", [])
 
+
 def efetch_medline(pmids: List[str]) -> List[Dict]:
     if not pmids:
         return []
@@ -88,14 +89,23 @@ def efetch_medline(pmids: List[str]) -> List[Dict]:
     records = list(Medline.parse(handle))
     result: List[Dict] = []
     for rec in records:
+        authors = rec.get("AU", [])
+        affiliations = rec.get("AD", [])
+        if isinstance(affiliations, str):
+            affiliations = [affiliations]
+
+        author_info = []
+        for i, name in enumerate(authors):
+            affil = affiliations[i] if i < len(affiliations) else ""
+            author_info.append((name, affil))
+
         result.append(
             {
                 "pmid": rec.get("PMID", ""),
                 "title": rec.get("TI", ""),
                 "journal": rec.get("JT", ""),
                 "pubdate": rec.get("DP", ""),
-                "authors": rec.get("AU", []),
-                "affiliations": rec.get("AD", []),
+                "authors": author_info,
                 "abstract": rec.get("AB", ""),
                 "doi": next(
                     (
@@ -109,32 +119,28 @@ def efetch_medline(pmids: List[str]) -> List[Dict]:
         )
     return result
 
+
 def to_txt(records: List[Dict]) -> str:
+    LARGE_PHARMA = ["Novartis", "Roche"]
     lines: List[str] = []
+
     for idx, rec in enumerate(records, 1):
         lines.append(f"## {idx}. {rec['title']}")
         lines.append(
             f"Journal: {rec['journal']} | PubDate: {rec['pubdate']} | PMID: {rec['pmid']} | DOI: {rec['doi']}"
         )
 
-        formatted_authors = []
-        affiliations = rec.get("affiliations")
-        affiliation_text = affiliations if isinstance(affiliations, str) else "; ".join(affiliations) if affiliations else ""
-
-        for author in rec["authors"]:
-            matched = None
-            for keyword in PHARMA_KEYWORDS:
-                if keyword.lower() in affiliation_text.lower():
-                    matched = keyword
-                    break
-            if matched:
-                formatted_authors.append(f"**{author}** ({matched})")
+        author_strs = []
+        for name, affil in rec["authors"]:
+            match = next((pharma for pharma in LARGE_PHARMA if pharma.lower() in affil.lower()), None)
+            if match:
+                formatted = f"**{name}** ({affil})"
             else:
-                continue  # omit non-pharma authors
+                formatted = name
+            author_strs.append(formatted)
 
-        if formatted_authors:
-            lines.append("Pharma Authors: " + "; ".join(formatted_authors))
-
+        if author_strs:
+            lines.append("Authors: " + "; ".join(author_strs))
         lines.append("Abstract:")
         lines.append(rec["abstract"] or "(no abstract)")
         lines.append("")
